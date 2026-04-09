@@ -4,10 +4,12 @@ import { Trophy, Star, Flame, Map as MapIcon, BookOpen, Code, Brain, ChevronLeft
 import { learningData, Phase, Level } from './data/learningData';
 import LevelMap from './components/LevelMap';
 import LevelView from './components/LevelView';
+import ChallengesView from './components/ChallengesView';
 
 export default function App() {
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
   const [completedLevels, setCompletedLevels] = useState<number[]>([]);
+  const [completedChallenges, setCompletedChallenges] = useState<string[]>([]);
   const [points, setPoints] = useState(0);
   const [streak, setStreak] = useState(0);
   const [badges, setBadges] = useState<string[]>([]);
@@ -18,6 +20,7 @@ export default function App() {
     if (saved) {
       const data = JSON.parse(saved);
       setCompletedLevels(data.completedLevels || []);
+      setCompletedChallenges(data.completedChallenges || []);
       setPoints(data.points || 0);
       setStreak(data.streak || 0);
       setBadges(data.badges || []);
@@ -28,11 +31,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('python-game-progress', JSON.stringify({
       completedLevels,
+      completedChallenges,
       points,
       streak,
       badges
     }));
-  }, [completedLevels, points, streak, badges]);
+  }, [completedLevels, completedChallenges, points, streak, badges]);
 
   const [view, setView] = useState<'map' | 'challenges'>('map');
 
@@ -52,6 +56,17 @@ export default function App() {
     }
     setCurrentLevelId(null);
   };
+
+  const handleChallengeComplete = (challengeId: string, earnedPoints: number) => {
+    if (!completedChallenges.includes(challengeId)) {
+      setCompletedChallenges([...completedChallenges, challengeId]);
+      setPoints(points + earnedPoints);
+      setStreak(streak + 1);
+    }
+  };
+
+  const phase1LevelIds = learningData.find(p => p.id === 1)?.levels.map(l => l.id) || [];
+  const isPhase1Complete = phase1LevelIds.every(id => completedLevels.includes(id));
 
   const currentLevel = currentLevelId 
     ? learningData.flatMap(p => p.levels).find(l => l.id === currentLevelId)
@@ -127,24 +142,38 @@ export default function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="text-center py-20"
               >
-                <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 max-w-2xl mx-auto">
-                  <div className="w-20 h-20 bg-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                    <Award className="w-10 h-10 text-purple-600" />
+                {!isPhase1Complete ? (
+                  <div className="text-center py-20">
+                    <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-200 max-w-2xl mx-auto">
+                      <div className="w-20 h-20 bg-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <Award className="w-10 h-10 text-purple-600" />
+                      </div>
+                      <h2 className="text-3xl font-black text-slate-800 mb-4">Challenge Mode</h2>
+                      <p className="text-slate-500 text-lg mb-8">
+                        Unlock Challenge Mode by completing Phase 1! 
+                        Here you'll face real-world problems and earn legendary badges.
+                      </p>
+                      <button 
+                        onClick={() => setView('map')}
+                        className="bg-slate-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-slate-800 transition-all"
+                      >
+                        Keep Learning
+                      </button>
+                    </div>
                   </div>
-                  <h2 className="text-3xl font-black text-slate-800 mb-4">Challenge Mode</h2>
-                  <p className="text-slate-500 text-lg mb-8">
-                    Unlock Challenge Mode by completing Phase 1! 
-                    Here you'll face real-world problems and earn legendary badges.
-                  </p>
-                  <button 
-                    onClick={() => setView('map')}
-                    className="bg-slate-900 text-white font-bold px-8 py-3 rounded-xl hover:bg-slate-800 transition-all"
-                  >
-                    Keep Learning
-                  </button>
-                </div>
+                ) : (
+                  <div className="space-y-8">
+                    <div className="text-center mb-8">
+                      <h2 className="text-3xl font-extrabold text-slate-800 mb-2">Challenge Arena</h2>
+                      <p className="text-slate-500">Test your skills with real-world coding problems!</p>
+                    </div>
+                    <ChallengesView 
+                      completedChallenges={completedChallenges}
+                      onComplete={handleChallengeComplete}
+                    />
+                  </div>
+                )}
               </motion.div>
             )
           ) : (

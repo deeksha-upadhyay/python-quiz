@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -10,16 +9,21 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   console.log('Server starting...');
   console.log('NODE_ENV:', process.env.NODE_ENV);
-  console.log('PATH:', process.env.PATH);
   
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
 
+  // Health check route
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     console.log('Starting Vite in development mode...');
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -27,7 +31,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     console.log('Starting in production mode...');
-    const distPath = path.resolve(process.cwd(), 'dist');
+    const distPath = path.resolve(__dirname, 'dist');
     console.log('Dist path:', distPath);
     
     if (fs.existsSync(distPath)) {
@@ -53,4 +57,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

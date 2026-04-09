@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Play, RotateCcw, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Play, RotateCcw, CheckCircle2, AlertCircle, HelpCircle, Palette } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CodeEditorProps {
@@ -15,13 +15,59 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
   const [isRunning, setIsRunning] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hint, setHint] = useState('');
+  const [showCanvas, setShowCanvas] = useState(false);
   const pyodideRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const turtleStateRef = useRef({
+    x: 150,
+    y: 150,
+    angle: 0,
+    penDown: true,
+    color: '#000000',
+    size: 2
+  });
+
+  useEffect(() => {
+    if (code.includes('import turtle')) {
+      setShowCanvas(true);
+    }
+  }, [code]);
+
+  const resetCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw center point
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.arc(150, 150, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    turtleStateRef.current = {
+      x: 150,
+      y: 150,
+      angle: 0,
+      penDown: true,
+      color: '#000000',
+      size: 2
+    };
+  };
 
   const runCode = async () => {
     setIsRunning(true);
     setError('');
     setOutput('');
     setHint('');
+    
+    if (code.includes('import turtle')) {
+      setShowCanvas(true);
+      // Small delay to ensure canvas is rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
+      resetCanvas();
+    }
 
     try {
       if (!pyodideRef.current) {
@@ -31,6 +77,125 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
 
       const pyodide = pyodideRef.current;
       
+      // Mock input() using window.prompt
+      await pyodide.runPythonAsync(`
+import builtins
+from js import window
+
+def mocked_input(prompt=""):
+    return window.prompt(prompt) or ""
+
+builtins.input = mocked_input
+      `);
+
+      // Bridge for Turtle Graphics
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+
+      if (ctx) {
+        const turtleBridge = {
+          forward: (distance: number) => {
+            const state = turtleStateRef.current;
+            const rad = (state.angle * Math.PI) / 180;
+            const newX = state.x + distance * Math.cos(rad);
+            const newY = state.y - distance * Math.sin(rad); // Canvas Y is inverted
+
+            if (state.penDown) {
+              ctx.beginPath();
+              ctx.moveTo(state.x, state.y);
+              ctx.lineTo(newX, newY);
+              ctx.strokeStyle = state.color;
+              ctx.lineWidth = state.size;
+              ctx.lineCap = 'round';
+              ctx.stroke();
+            }
+            state.x = newX;
+            state.y = newY;
+          },
+          backward: (distance: number) => turtleBridge.forward(-distance),
+          left: (angle: number) => {
+            turtleStateRef.current.angle = (turtleStateRef.current.angle + angle) % 360;
+          },
+          right: (angle: number) => {
+            turtleStateRef.current.angle = (turtleStateRef.current.angle - angle + 360) % 360;
+          },
+          penup: () => { turtleStateRef.current.penDown = false; },
+          pendown: () => { turtleStateRef.current.penDown = true; },
+          color: (c: string) => { turtleStateRef.current.color = c; },
+          pensize: (s: number) => { turtleStateRef.current.size = s; },
+          circle: (radius: number) => {
+            const state = turtleStateRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (ctx && state.penDown) {
+              // Turtle circle is drawn with turtle on the circumference
+              // Center is 'radius' to the left of the turtle
+              const rad = ((state.angle + 90) * Math.PI) / 180;
+              const centerX = state.x + radius * Math.cos(rad);
+              const centerY = state.y - radius * Math.sin(rad);
+
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, Math.abs(radius), 0, Math.PI * 2);
+              ctx.strokeStyle = state.color;
+              ctx.lineWidth = state.size;
+              ctx.stroke();
+            }
+          },
+          dot: (size?: number) => {
+            const state = turtleStateRef.current;
+            const ctx = canvas?.getContext('2d');
+            if (ctx) {
+              ctx.beginPath();
+              ctx.arc(state.x, state.y, (size || state.size * 2) / 2, 0, Math.PI * 2);
+              ctx.fillStyle = state.color;
+              ctx.fill();
+            }
+          },
+          reset: () => resetCanvas(),
+          clear: () => resetCanvas()
+        };
+
+        // Expose bridge to Python
+        // @ts-ignore
+        pyodide.registerJsModule("turtle_bridge", turtleBridge);
+        
+        await pyodide.runPythonAsync(`
+import turtle_bridge
+
+class Turtle:
+    def __init__(self):
+        pass
+    def forward(self, d): turtle_bridge.forward(d)
+    def fd(self, d): turtle_bridge.forward(d)
+    def backward(self, d): turtle_bridge.backward(d)
+    def bk(self, d): turtle_bridge.backward(d)
+    def left(self, a): turtle_bridge.left(a)
+    def lt(self, a): turtle_bridge.left(a)
+    def right(self, a): turtle_bridge.right(a)
+    def rt(self, a): turtle_bridge.right(a)
+    def penup(self): turtle_bridge.penup()
+    def pu(self): turtle_bridge.penup()
+    def pendown(self): turtle_bridge.pendown()
+    def pd(self): turtle_bridge.pendown()
+    def color(self, c): turtle_bridge.color(c)
+    def pensize(self, s): turtle_bridge.pensize(s)
+    def width(self, s): turtle_bridge.pensize(s)
+    def circle(self, r): turtle_bridge.circle(r)
+    def dot(self, s=None): turtle_bridge.dot(s)
+    def reset(self): turtle_bridge.reset()
+    def clear(self): turtle_bridge.clear()
+
+def Turtle_func():
+    return Turtle()
+
+import sys
+from types import ModuleType
+
+turtle = ModuleType("turtle")
+turtle.Turtle = Turtle_func
+sys.modules["turtle"] = turtle
+        `);
+      }
+
       // Redirect stdout to capture print() calls
       let capturedOutput = '';
       pyodide.setStdout({
@@ -80,6 +245,10 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
     setError('');
     setIsSuccess(false);
     setHint('');
+    if (!initialCode.includes('import turtle')) {
+      setShowCanvas(false);
+    }
+    resetCanvas();
   };
 
   return (
@@ -94,6 +263,13 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
         />
         <div className="absolute top-4 right-4 flex gap-2">
           <button
+            onClick={() => setShowCanvas(!showCanvas)}
+            className={`p-2 rounded-xl transition-all ${showCanvas ? 'bg-pink-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+            title="Toggle Canvas"
+          >
+            <Palette className="w-5 h-5" />
+          </button>
+          <button
             onClick={resetCode}
             className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl transition-colors"
             title="Reset Code"
@@ -102,6 +278,38 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showCanvas && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 flex flex-col items-center gap-4">
+              <div className="flex items-center justify-between w-full px-2">
+                <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <Palette className="w-4 h-4" />
+                  Turtle Canvas
+                </h5>
+                <button 
+                  onClick={resetCanvas}
+                  className="text-[10px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest"
+                >
+                  Clear Canvas
+                </button>
+              </div>
+              <canvas 
+                ref={canvasRef} 
+                width={300} 
+                height={300} 
+                className="bg-slate-50 rounded-xl border border-slate-100 shadow-inner"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <button
