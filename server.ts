@@ -8,36 +8,58 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let pythonPath = '/usr/bin/python3';
+let pythonPath = 'python3'; // Default to command name
+console.log('Starting Python path discovery...');
 try {
   const foundPath = execSync('command -v python3 || command -v python').toString().trim();
   if (foundPath) {
     pythonPath = foundPath;
+    console.log('Found Python path via command -v:', pythonPath);
   }
 } catch (e) {
-  console.error('Could not find python path dynamically, using default:', pythonPath);
-}
-
-// Fallback check: if the path doesn't exist, try common locations
-if (!fs.existsSync(pythonPath)) {
+  console.log('command -v failed, trying common absolute paths...');
+  // If command -v fails, try common absolute paths
   const commonPaths = ['/usr/bin/python3', '/usr/local/bin/python3', '/usr/bin/python', '/usr/local/bin/python'];
   for (const p of commonPaths) {
     if (fs.existsSync(p)) {
       pythonPath = p;
+      console.log('Found Python path via fs.existsSync:', pythonPath);
       break;
     }
   }
 }
+console.log('Final Python Path selected:', pythonPath);
 
 async function startServer() {
   console.log('Server starting...');
+  console.log('NODE_ENV:', process.env.NODE_ENV);
   console.log('PATH:', process.env.PATH);
-  console.log('Python Path:', pythonPath);
+  console.log('Initial Python Path:', pythonPath);
   
   const app = express();
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Debug route to inspect environment
+  app.get('/api/debug', (req, res) => {
+    let foundPython = 'Not found';
+    try {
+      foundPython = execSync('which python3 || which python').toString().trim();
+    } catch (e) {
+      foundPython = 'Error finding python: ' + (e instanceof Error ? e.message : String(e));
+    }
+
+    res.json({
+      nodeEnv: process.env.NODE_ENV,
+      path: process.env.PATH,
+      pythonPath,
+      foundPython,
+      exists: fs.existsSync(pythonPath),
+      cwd: process.cwd(),
+      filesInBin: fs.existsSync('/usr/bin') ? fs.readdirSync('/usr/bin').filter(f => f.includes('python')) : []
+    });
+  });
 
   // API Route to run Python code
   app.post('/api/run-python', (req, res) => {
@@ -45,10 +67,6 @@ async function startServer() {
 
     if (!code) {
       return res.status(400).json({ error: 'No code provided' });
-    }
-
-    if (!fs.existsSync(pythonPath)) {
-      return res.json({ output: '', error: `System Error: Python executable not found at ${pythonPath}` });
     }
 
     // Basic security: check for some dangerous imports
@@ -68,8 +86,13 @@ async function startServer() {
     try {
       pythonProcess = spawn(pythonPath, ['-c', code]);
     } catch (err) {
-      clearTimeout(timeout);
-      return res.json({ output: '', error: `System Error: Failed to spawn Python process. (${err instanceof Error ? err.message : String(err)})` });
+      // Fallback to 'python' if 'python3' or absolute path fails
+      try {
+        pythonProcess = spawn('python', ['-c', code]);
+      } catch (err2) {
+        clearTimeout(timeout);
+        return res.json({ output: '', error: `System Error: Failed to spawn Python process. (${err instanceof Error ? err.message : String(err)})` });
+      }
     }
 
     let output = '';
@@ -83,28 +106,49 @@ async function startServer() {
     }, 5000);
 
     pythonProcess.on('error', (err) => {
-      clearTimeout(timeout);
-      if (!res.headersSent) {
-        res.json({ output: '', error: `System Error: Could not start Python at ${pythonPath}. (${err.message})` });
+      if (err.message.includes('ENOENT') && pythonPath !== 'python') {
+        // Try fallback to 'python'
+        console.log('python3 failed, trying python fallback...');
+        const fallbackProcess = spawn('python', ['-c', code]);
+        
+        fallbackProcess.on('error', (err2) => {
+          clearTimeout(timeout);
+          if (!res.headersSent) {
+            res.json({ output: '', error: `System Error: Could not start Python (tried ${pythonPath} and python). (${err2.message})` });
+          }
+        });
+
+        setupProcessHandlers(fallbackProcess, res, timeout);
+      } else {
+        clearTimeout(timeout);
+        if (!res.headersSent) {
+          res.json({ output: '', error: `System Error: Could not start Python at ${pythonPath}. (${err.message})` });
+        }
       }
     });
 
-    // Provide an empty string to stdin to prevent hanging on input()
-    pythonProcess.stdin.write('\n');
-    pythonProcess.stdin.end();
+    function setupProcessHandlers(proc, response, timer) {
+      // Provide an empty string to stdin to prevent hanging on input()
+      proc.stdin.write('\n');
+      proc.stdin.end();
 
-    pythonProcess.stdout.on('data', (data) => {
-      output += data.toString();
-    });
+      proc.stdout.on('data', (data) => {
+        output += data.toString();
+      });
 
-    pythonProcess.stderr.on('data', (data) => {
-      error += data.toString();
-    });
+      proc.stderr.on('data', (data) => {
+        error += data.toString();
+      });
 
-    pythonProcess.on('close', (code) => {
-      clearTimeout(timeout);
-      res.json({ output, error });
-    });
+      proc.on('close', (code) => {
+        clearTimeout(timer);
+        if (!response.headersSent) {
+          response.json({ output, error });
+        }
+      });
+    }
+
+    setupProcessHandlers(pythonProcess, res, timeout);
   });
 
   // Vite middleware for development
