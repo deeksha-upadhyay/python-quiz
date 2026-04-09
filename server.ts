@@ -36,6 +36,13 @@ async function startServer() {
 
     const pythonProcess = spawn('python3', ['-c', code]);
 
+    pythonProcess.on('error', (err) => {
+      clearTimeout(timeout);
+      if (!res.headersSent) {
+        res.json({ output: '', error: `System Error: Could not start Python. (${err.message})` });
+      }
+    });
+
     // Provide an empty string to stdin to prevent hanging on input()
     pythonProcess.stdin.write('\n');
     pythonProcess.stdin.end();

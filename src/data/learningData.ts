@@ -39,7 +39,7 @@ export const learningData: Phase[] = [
         example: "# No code here, just thinking!\n# If I say 'Walk', the robot walks.",
         practicePrompt: "Try printing your first message! Type: print(\"I am a coder!\")",
         initialCode: "",
-        solution: "print(\"I am a coder!\")",
+        solution: "print\\(\"I am a coder!\"\\)",
         quiz: [
           {
             question: "What is coding?",
@@ -58,7 +58,7 @@ export const learningData: Phase[] = [
         example: "print(\"Hello Python!\")",
         practicePrompt: "Let's say hello to Python! Type: print(\"Hello Python!\")",
         initialCode: "",
-        solution: "print(\"Hello Python!\")",
+        solution: "print\\(\"Hello Python!\"\\)",
         quiz: [
           {
             question: "Why is Python popular for beginners?",
@@ -77,7 +77,7 @@ export const learningData: Phase[] = [
         example: "print(\"Welcome to the game!\")",
         practicePrompt: "Print your name! For example: print(\"Alex\")",
         initialCode: "print(\"\")",
-        solution: "print(\".+\")",
+        solution: "print\\(\".+\"\\)",
         quiz: [
           {
             question: "What does print() do?",

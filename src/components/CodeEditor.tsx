@@ -34,7 +34,6 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
       setError(data.error);
 
       // Check if solution matches
-      // For kids, we can use a simple regex or string match
       const solutionRegex = new RegExp(solution, 'i');
       if (!data.error && solutionRegex.test(code)) {
         setIsSuccess(true);
