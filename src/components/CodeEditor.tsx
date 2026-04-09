@@ -15,6 +15,7 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
   const [isRunning, setIsRunning] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hint, setHint] = useState('');
+  const pyodideRef = useRef<any>(null);
 
   const runCode = async () => {
     setIsRunning(true);
@@ -23,32 +24,39 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
     setHint('');
 
     try {
-      const response = await fetch('/api/run-python', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+      if (!pyodideRef.current) {
+        // @ts-ignore
+        pyodideRef.current = await window.loadPyodide();
+      }
+
+      const pyodide = pyodideRef.current;
+      
+      // Redirect stdout to capture print() calls
+      let capturedOutput = '';
+      pyodide.setStdout({
+        batched: (text: string) => {
+          capturedOutput += text + '\n';
+        }
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        setError(`Server Error: ${response.status} ${response.statusText}. ${text}`);
-        return;
-      }
-
-      const data = await response.json();
-      setOutput(data.output);
-      setError(data.error);
-
-      // Check if solution matches
-      const solutionRegex = new RegExp(solution, 'i');
-      if (!data.error && solutionRegex.test(code)) {
-        setIsSuccess(true);
-        onSuccess();
-      } else if (data.error) {
-        generateHint(data.error, code);
+      try {
+        await pyodide.runPythonAsync(code);
+        setOutput(capturedOutput.trim());
+        
+        // Check if solution matches
+        const solutionRegex = new RegExp(solution, 'i');
+        if (solutionRegex.test(code)) {
+          setIsSuccess(true);
+          onSuccess();
+        }
+      } catch (err: any) {
+        const errMsg = err.message || String(err);
+        setError(errMsg);
+        generateHint(errMsg, code);
       }
     } catch (err) {
-      setError('Failed to connect to the Python server.');
+      setError('Failed to initialize Python environment in the browser.');
+      console.error(err);
     } finally {
       setIsRunning(false);
     }
