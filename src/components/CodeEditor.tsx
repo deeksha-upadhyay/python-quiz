@@ -29,6 +29,12 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
         body: JSON.stringify({ code }),
       });
 
+      if (!response.ok) {
+        const text = await response.text();
+        setError(`Server Error: ${response.status} ${response.statusText}. ${text}`);
+        return;
+      }
+
       const data = await response.json();
       setOutput(data.output);
       setError(data.error);
