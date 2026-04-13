@@ -58,6 +58,7 @@ export default function CodeEditor({ initialCode, solution, onSuccess }: CodeEdi
 
   const runCode = async () => {
     setIsRunning(true);
+    setIsSuccess(false);
     setError('');
     setOutput('');
     setHint('');
@@ -209,8 +210,11 @@ sys.modules["turtle"] = turtle
         setOutput(capturedOutput.trim());
         
         // Check if solution matches
-        const solutionRegex = new RegExp(solution, 'i');
-        if (solutionRegex.test(code)) {
+        const solutionRegex = new RegExp(solution, 'is');
+        const isMatch = solutionRegex.test(code);
+        console.log('Challenge Check:', { matches: isMatch, solution });
+        
+        if (isMatch) {
           setIsSuccess(true);
           onSuccess();
         }
@@ -261,7 +265,20 @@ sys.modules["turtle"] = turtle
           className="w-full h-48 bg-slate-900 text-slate-100 p-6 rounded-2xl font-mono text-lg resize-none focus:ring-4 focus:ring-blue-500/20 outline-none transition-all"
           placeholder="# Type your Python code here..."
         />
-        <div className="absolute top-4 right-4 flex gap-2">
+        <AnimatePresence>
+          {isSuccess && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="absolute inset-0 bg-green-500/90 rounded-2xl flex flex-col items-center justify-center text-white z-10 backdrop-blur-sm"
+            >
+              <CheckCircle2 className="w-16 h-16 mb-2 animate-bounce" />
+              <h3 className="text-2xl font-black uppercase tracking-tighter">Challenge Complete!</h3>
+              <p className="font-bold opacity-80">You nailed it!</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="absolute top-4 right-4 flex gap-2 z-20">
           <button
             onClick={() => setShowCanvas(!showCanvas)}
             className={`p-2 rounded-xl transition-all ${showCanvas ? 'bg-pink-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}

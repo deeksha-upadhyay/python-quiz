@@ -15,22 +15,30 @@ export default function ChallengesView({ onComplete, completedChallenges }: Chal
   const [showBadgeAlert, setShowBadgeAlert] = useState<string | null>(null);
 
   const handleChallengeSuccess = (challenge: Challenge) => {
-    confetti({
-      particleCount: 150,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#A855F7', '#D8B4FE', '#FAF5FF']
-    });
+    console.log('Challenge Success Triggered:', challenge.id);
+    
+    try {
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#A855F7', '#D8B4FE', '#FAF5FF']
+      });
+    } catch (e) {
+      console.error('Confetti error:', e);
+    }
     
     // Show badge alert
     setShowBadgeAlert(challenge.title);
     
+    // Call completion handler
     onComplete(challenge.id, challenge.rewardPoints);
     
+    // Wait longer before closing to let the user see the success
     setTimeout(() => {
       setShowBadgeAlert(null);
       setSelectedChallenge(null);
-    }, 3000);
+    }, 4000);
   };
 
   return (
@@ -38,23 +46,29 @@ export default function ChallengesView({ onComplete, completedChallenges }: Chal
       <AnimatePresence>
         {showBadgeAlert && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.5, y: 50 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.5, y: -50 }}
-            className="fixed inset-0 flex items-center justify-center z-[100] pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 flex items-center justify-center z-[100] bg-slate-900/60 backdrop-blur-md"
           >
-            <div className="bg-white p-8 rounded-3xl shadow-2xl border-4 border-purple-400 flex flex-col items-center gap-4 max-w-sm text-center">
-              <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center animate-bounce">
-                <Trophy className="w-10 h-10 text-purple-600" />
+            <motion.div
+              initial={{ scale: 0.5, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.5, y: -50 }}
+              className="bg-white p-10 rounded-[40px] shadow-2xl border-8 border-purple-400 flex flex-col items-center gap-6 max-w-sm text-center"
+            >
+              <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center animate-bounce shadow-inner">
+                <Trophy className="w-12 h-12 text-purple-600" />
               </div>
-              <div>
-                <h4 className="text-2xl font-black text-slate-800">Badge Earned!</h4>
-                <p className="text-purple-600 font-bold">Challenge Master: {showBadgeAlert}</p>
+              <div className="space-y-2">
+                <h4 className="text-3xl font-black text-slate-800 tracking-tighter uppercase">Badge Earned!</h4>
+                <p className="text-purple-600 font-bold text-lg">Challenge Master: {showBadgeAlert}</p>
               </div>
-              <div className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full font-black text-sm">
-                + Points Added!
+              <div className="bg-yellow-400 text-slate-900 px-6 py-2 rounded-2xl font-black text-lg shadow-lg rotate-3">
+                + REWARD POINTS!
               </div>
-            </div>
+              <p className="text-slate-400 text-sm font-bold">Progress Saved to Profile</p>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

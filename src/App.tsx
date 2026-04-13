@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Star, Flame, Map as MapIcon, BookOpen, Code, Brain, ChevronLeft, Award } from 'lucide-react';
+import { Trophy, Star, Flame, Map as MapIcon, BookOpen, Code, Brain, ChevronLeft, Award, LogOut, User as UserIcon } from 'lucide-react';
 import { learningData, Phase, Level } from './data/learningData';
 import LevelMap from './components/LevelMap';
 import LevelView from './components/LevelView';
 import ChallengesView from './components/ChallengesView';
+import LoginView from './components/LoginView';
 
 export default function App() {
+  const [user, setUser] = useState<string | null>(null);
   const [currentLevelId, setCurrentLevelId] = useState<number | null>(null);
   const [completedLevels, setCompletedLevels] = useState<number[]>([]);
   const [completedChallenges, setCompletedChallenges] = useState<string[]>([]);
@@ -14,9 +16,11 @@ export default function App() {
   const [streak, setStreak] = useState(0);
   const [badges, setBadges] = useState<string[]>([]);
 
-  // Load progress from localStorage
+  // Load progress from localStorage when user changes
   useEffect(() => {
-    const saved = localStorage.getItem('python-game-progress');
+    if (!user) return;
+    
+    const saved = localStorage.getItem(`python-game-progress-${user}`);
     if (saved) {
       const data = JSON.parse(saved);
       setCompletedLevels(data.completedLevels || []);
@@ -24,53 +28,93 @@ export default function App() {
       setPoints(data.points || 0);
       setStreak(data.streak || 0);
       setBadges(data.badges || []);
+    } else {
+      // Reset state for new user
+      setCompletedLevels([]);
+      setCompletedChallenges([]);
+      setPoints(0);
+      setStreak(0);
+      setBadges([]);
     }
-  }, []);
+  }, [user]);
 
-  // Save progress
+  // Save progress when state changes
   useEffect(() => {
-    localStorage.setItem('python-game-progress', JSON.stringify({
+    if (!user) return;
+    
+    localStorage.setItem(`python-game-progress-${user}`, JSON.stringify({
       completedLevels,
       completedChallenges,
       points,
       streak,
       badges
     }));
-  }, [completedLevels, completedChallenges, points, streak, badges]);
+  }, [completedLevels, completedChallenges, points, streak, badges, user]);
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentLevelId(null);
+  };
 
   const [view, setView] = useState<'map' | 'challenges'>('map');
 
   const handleLevelComplete = (levelId: number, earnedPoints: number) => {
     if (!completedLevels.includes(levelId)) {
-      setCompletedLevels([...completedLevels, levelId]);
-      setPoints(points + earnedPoints);
-      setStreak(streak + 1);
-      
-      // Check for badges
-      if (completedLevels.length + 1 === 1 && !badges.includes('Beginner')) {
-        setBadges([...badges, 'Beginner']);
-      }
-      if (completedLevels.length + 1 === 10 && !badges.includes('Explorer')) {
-        setBadges([...badges, 'Explorer']);
-      }
+      setCompletedLevels(prev => {
+        const next = [...prev, levelId];
+        
+        // Check for badges based on new completion count
+        if (next.length === 1 && !badges.includes('Beginner')) {
+          setBadges(b => [...b, 'Beginner']);
+        }
+        if (next.length === 10 && !badges.includes('Explorer')) {
+          setBadges(b => [...b, 'Explorer']);
+        }
+        
+        return next;
+      });
+      setPoints(prev => prev + earnedPoints);
+      setStreak(prev => prev + 1);
     }
     setCurrentLevelId(null);
   };
 
   const handleChallengeComplete = (challengeId: string, earnedPoints: number) => {
-    if (!completedChallenges.includes(challengeId)) {
-      setCompletedChallenges([...completedChallenges, challengeId]);
-      setPoints(points + earnedPoints);
-      setStreak(streak + 1);
-    }
+    console.log('Completing challenge:', challengeId, 'Points:', earnedPoints);
+    setCompletedChallenges(prev => {
+      if (prev.includes(challengeId)) {
+        console.log('Challenge already completed:', challengeId);
+        return prev;
+      }
+      
+      const next = [...prev, challengeId];
+      
+      // Update points and streak
+      setPoints(p => p + earnedPoints);
+      setStreak(s => s + 1);
+      
+      // Update badges
+      setBadges(current => {
+        const nextBadges = [...current];
+        if (next.length === 1 && !nextBadges.includes('Challenger')) nextBadges.push('Challenger');
+        if (next.length === 5 && !nextBadges.includes('Master')) nextBadges.push('Master');
+        return nextBadges;
+      });
+      
+      return next;
+    });
   };
 
   const phase1LevelIds = learningData.find(p => p.id === 1)?.levels.map(l => l.id) || [];
-  const isPhase1Complete = phase1LevelIds.every(id => completedLevels.includes(id));
+  const isPhase1Complete = completedLevels.filter(id => phase1LevelIds.includes(id)).length >= 5;
 
   const currentLevel = currentLevelId 
     ? learningData.flatMap(p => p.levels).find(l => l.id === currentLevelId)
     : null;
+
+  if (!user) {
+    return <LoginView onLogin={setUser} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-yellow-200">
@@ -81,7 +125,10 @@ export default function App() {
             <div className="bg-yellow-400 p-2 rounded-xl shadow-sm">
               <Code className="w-6 h-6 text-slate-900" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight hidden sm:block">Python Quest</h1>
+            <div className="hidden sm:block">
+              <h1 className="text-xl font-bold tracking-tight leading-none">Python Quest</h1>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Player: {user}</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-4 sm:gap-6">
@@ -100,21 +147,53 @@ export default function App() {
               Challenges
             </button>
             <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block" />
-            <div className="flex items-center gap-1.5 bg-yellow-50 px-3 py-1.5 rounded-full border border-yellow-100">
-              <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-              <span className="font-bold text-yellow-700">{points}</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-orange-50 px-3 py-1.5 rounded-full border border-orange-100">
-              <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
-              <span className="font-bold text-orange-700">{streak}</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
-              <Trophy className="w-4 h-4 text-purple-500" />
-              <span className="font-bold text-purple-700">{badges.length}</span>
-            </div>
+            
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+              title="Switch User"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
+
+      {/* Stats Bar (Mobile Friendly) */}
+      <div className="bg-white border-b border-slate-100 py-2 px-4 sm:hidden">
+        <div className="flex items-center justify-center gap-4">
+          <div className="flex items-center gap-1.5 bg-yellow-50 px-3 py-1 rounded-full border border-yellow-100">
+            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+            <span className="font-bold text-yellow-700 text-sm">{points}</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-orange-50 px-3 py-1 rounded-full border border-orange-100">
+            <Flame className="w-3 h-3 text-orange-500 fill-orange-500" />
+            <span className="font-bold text-orange-700 text-sm">{streak}</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-purple-50 px-3 py-1 rounded-full border border-purple-100">
+            <Trophy className="w-3 h-3 text-purple-500" />
+            <span className="font-bold text-purple-700 text-sm">{badges.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Bar (Desktop) */}
+      <div className="hidden sm:block max-w-5xl mx-auto px-6 pt-4">
+        <div className="flex items-center justify-end gap-4">
+          <div className="flex items-center gap-1.5 bg-yellow-50 px-4 py-2 rounded-2xl border border-yellow-100 shadow-sm">
+            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+            <span className="font-black text-yellow-700">{points} Points</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100 shadow-sm">
+            <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
+            <span className="font-black text-orange-700">{streak} Streak</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-purple-50 px-4 py-2 rounded-2xl border border-purple-100 shadow-sm">
+            <Trophy className="w-4 h-4 text-purple-500" />
+            <span className="font-black text-purple-700">{badges.length} Badges</span>
+          </div>
+        </div>
+      </div>
 
       <main className="max-w-5xl mx-auto p-4 sm:p-6">
         <AnimatePresence mode="wait">
@@ -151,7 +230,7 @@ export default function App() {
                       </div>
                       <h2 className="text-3xl font-black text-slate-800 mb-4">Challenge Mode</h2>
                       <p className="text-slate-500 text-lg mb-8">
-                        Unlock Challenge Mode by completing Phase 1! 
+                        Unlock Challenge Mode by completing the first 5 levels of Phase 1! 
                         Here you'll face real-world problems and earn legendary badges.
                       </p>
                       <button 
